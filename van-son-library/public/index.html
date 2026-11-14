@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1b4332">
+  <meta name="description" content="Khám phá sách, đăng ký mượn và quản lý thư viện Văn Sơn Library.">
+  <title>Văn Sơn Library | Không gian tri thức</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/enhancements.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
+  <!-- Header & Navigation -->
+  <header class="main-header">
+    <div class="navbar-container">
+      <div class="brand-logo">
+        <i class="fa-solid fa-book-open-reader"></i>
+        <span>Văn Sơn Library</span>
+      </div>
+      <nav class="nav-menu" aria-label="Điều hướng chính">
+        <a href="#view-home" class="nav-link active" data-tab="home" onclick="switchTab('home')"><i class="fa-solid fa-house"></i> Trang chủ</a>
+        <a href="#about" class="nav-link" onclick="switchTab('home')"><i class="fa-solid fa-circle-info"></i> Giới thiệu</a>
+        <a href="#search-section" class="nav-link" data-tab="catalog" onclick="switchTab('catalog')"><i class="fa-solid fa-magnifying-glass"></i> Tra cứu</a>
+        <details class="nav-dropdown" id="category-dropdown">
+          <summary class="nav-link"><i class="fa-solid fa-layer-group"></i> Thể loại <i class="fa-solid fa-chevron-down dropdown-chevron" aria-hidden="true"></i></summary>
+          <div class="category-menu" aria-label="Chọn thể loại sách">
+            <button type="button" class="category-option active" data-category="Tất cả" onclick="filterCategory('Tất cả')">Tất cả thể loại</button>
+            <button type="button" class="category-option" data-category="Sách báo" onclick="filterCategory('Sách báo')">Sách báo</button>
+            <button type="button" class="category-option" data-category="Sách ngôn tình" onclick="filterCategory('Sách ngôn tình')">Sách ngôn tình</button>
+            <button type="button" class="category-option" data-category="Sách trinh thám" onclick="filterCategory('Sách trinh thám')">Sách trinh thám</button>
+            <button type="button" class="category-option" data-category="Sách từ điển" onclick="filterCategory('Sách từ điển')">Sách từ điển</button>
+            <button type="button" class="category-option" data-category="Sách văn học" onclick="filterCategory('Sách văn học')">Sách văn học</button>
+            <button type="button" class="category-option" data-category="Sách giáo khoa" onclick="filterCategory('Sách giáo khoa')">Sách giáo khoa</button>
+            <button type="button" class="category-option" data-category="Sách kỹ năng" onclick="filterCategory('Sách kỹ năng')">Sách kỹ năng</button>
+            <button type="button" class="category-option" data-category="Các thể loại khác" onclick="filterCategory('Các thể loại khác')">Các thể loại khác</button>
+          </div>
+        </details>
+        <a href="#" class="nav-link" id="nav-loans" data-tab="loans" onclick="switchTab('loans')" style="display:none;"><i class="fa-solid fa-clock-rotate-left"></i> Lịch sử mượn</a>
+        <a href="#" class="nav-link" id="nav-admin" data-tab="admin" onclick="switchTab('admin')" style="display:none;"><i class="fa-solid fa-user-shield"></i> Quản trị</a>
+        <a href="#contact" class="nav-link"><i class="fa-solid fa-envelope"></i> Liên hệ</a>
+      </nav>
+      <div class="auth-actions" id="auth-actions">
+        <!-- Nạp động qua JS: Đăng nhập/Đăng ký hoặc Thông tin người dùng -->
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content" id="main-content">
+    <!-- VIEW: TRANG CHỦ & KHO SÁCH -->
+    <div id="view-home">
+      <!-- Banner -->
+      <section class="hero-banner">
+        <div class="hero-content">
+          <h1>Chào mừng đến với Văn Sơn Library</h1>
+          <p>Khám phá tri thức mới và chọn cuốn sách tiếp theo cho hành trình của bạn.</p>
+        </div>
+      </section>
+
+      <!-- Thanh Tìm kiếm Sách Nâng cao -->
+      <section class="search-bar-section" id="search-section" aria-label="Tìm kiếm sách">
+        <div class="search-wrapper">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="search" id="search-input" aria-label="Tìm sách" placeholder="Tìm theo mã, tên sách hoặc tác giả...">
+          <button class="btn btn-primary" type="button" onclick="handleSearch()">Tìm kiếm</button>
+        </div>
+      </section>
+
+      <!-- Danh sách sách dạng thẻ -->
+      <section class="books-container">
+        <h2 class="section-title"><i class="fa-solid fa-layer-group"></i> Danh Mục Sách Thư Viện</h2>
+        <div class="books-grid" id="books-grid">
+          <!-- Render danh sách sách bằng JavaScript -->
+        </div>
+      </section>
+
+      <section class="about-section" id="about">
+        <p class="eyebrow">Về chúng tôi</p>
+        <h2>Không gian dành cho người yêu sách</h2>
+        <p class="about-copy">Văn Sơn Library giúp bạn khám phá đầu sách phù hợp, đăng ký mượn thuận tiện và theo dõi lịch sử đọc sách ở cùng một nơi.</p>
+        <div class="about-features">
+          <article><i class="fa-solid fa-book-open" aria-hidden="true"></i><h3>Khám phá dễ dàng</h3><p>Tìm sách theo tên, tác giả hoặc thể loại.</p></article>
+          <article><i class="fa-solid fa-hand-holding-heart" aria-hidden="true"></i><h3>Mượn sách tiện lợi</h3><p>Gửi yêu cầu mượn sách trực tuyến.</p></article>
+          <article><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><h3>Theo dõi rõ ràng</h3><p>Xem trạng thái các yêu cầu mượn của bạn.</p></article>
+        </div>
+      </section>
+    </div>
+
+    <!-- VIEW: LỊCH SỬ MƯỢN TRẢ CỦA KHÁCH -->
+    <div id="view-loans" style="display:none;" class="view-panel">
+      <h2 class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> Lịch Sử Mượn Và Trả Sách Của Bạn</h2>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mã Phiếu</th>
+              <th>Mã Sách</th>
+              <th>Tên Sách</th>
+              <th>Ngày Mượn</th>
+              <th>Hạn Trả</th>
+              <th>Ngày Trả Thực Tế</th>
+              <th>Trạng Thái</th>
+            </tr>
+          </thead>
+          <tbody id="my-loans-table">
+            <!-- Nạp động qua JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW: BẢNG ĐIỀU KHIỂN QUẢN TRỊ ADMIN -->
+    <div id="view-admin" style="display:none;" class="view-panel">
+      <h2 class="section-title"><i class="fa-solid fa-chart-line"></i> Thống Kê & Báo Cáo Thư Viện</h2>
+      
+      <!-- Thống kê 4 số liệu -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <i class="fa-solid fa-books"></i>
+          <div><h3 id="stat-total">0</h3><p>Tổng số sách</p></div>
+        </div>
+        <div class="stat-card">
+          <i class="fa-solid fa-book-bookmark"></i>
+          <div><h3 id="stat-available">0</h3><p>Sách còn trong kho</p></div>
+        </div>
+        <div class="stat-card">
+          <i class="fa-solid fa-hand-holding-hand"></i>
+          <div><h3 id="stat-borrowing">0</h3><p>Sách đang được mượn</p></div>
+        </div>
+        <div class="stat-card alert">
+          <i class="fa-solid fa-circle-exclamation"></i>
+          <div><h3 id="stat-out">0</h3><p>Đầu sách đã hết</p></div>
+        </div>
+      </div>
+
+      <!-- Quản trị kho sách -->
+      <div class="admin-actions-bar">
+        <h3>Quản Lý Kho Sách</h3>
+        <button class="btn btn-primary" onclick="openAddBookModal()"><i class="fa-solid fa-plus"></i> Thêm Sách Mới</button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mã ID</th>
+              <th>Ảnh</th>
+              <th>Tên Sách</th>
+              <th>Tác Giả</th>
+              <th>Thể Loại</th>
+              <th>Vị Trí Kệ</th>
+              <th>Tổng</th>
+              <th>Còn</th>
+              <th>Trạng Thái</th>
+              <th>Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody id="admin-books-table"></tbody>
+        </table>
+      </div>
+
+      <!-- Quản trị phiếu mượn & Xử lý vi phạm/trả sách -->
+      <h3 style="margin-top: 30px; margin-bottom: 15px;">Theo Dõi Phiếu Mượn & Xác Nhận Trả</h3>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Độc Giả</th>
+              <th>Liên Hệ</th>
+              <th>Tên Sách</th>
+              <th>Ngày Mượn</th>
+              <th>Hạn Trả</th>
+              <th>Trạng Thái</th>
+              <th>Hành Động</th>
+            </tr>
+          </thead>
+          <tbody id="admin-loans-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL ĐĂNG NHẬP -->
+  <div id="modal-login" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-login-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modal-login-title">Đăng Nhập Văn Sơn Library</h3>
+        <button class="close-btn" type="button" aria-label="Đóng" onclick="closeModal('modal-login')">&times;</button>
+      </div>
+      <form id="form-login" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Email: *</label>
+          <input type="email" id="login-email" required placeholder="admin@vanson.edu.vn">
+        </div>
+        <div class="form-group">
+          <label>Mật khẩu: *</label>
+          <input type="password" id="login-password" autocomplete="current-password" required placeholder="Nhập mật khẩu">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Đăng Nhập</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL ĐĂNG KÝ -->
+  <div id="modal-register" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-register-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modal-register-title">Đăng Ký Tài Khoản Độc Giả</h3>
+        <button class="close-btn" type="button" aria-label="Đóng" onclick="closeModal('modal-register')">&times;</button>
+      </div>
+      <form id="form-register" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label>Họ và Tên: *</label>
+          <input type="text" id="reg-name" autocomplete="name" maxlength="100" required placeholder="Nguyễn Văn A">
+        </div>
+        <div class="form-group">
+          <label>Email: *</label>
+          <input type="email" id="reg-email" autocomplete="email" maxlength="254" required placeholder="name@domain.com">
+        </div>
+        <div class="form-group">
+          <label>Số điện thoại: *</label>
+          <input type="tel" id="reg-phone" autocomplete="tel" pattern="[0-9]{10,11}" required placeholder="090xxxxxxx">
+        </div>
+        <div class="form-group">
+          <label>Mật khẩu: *</label>
+          <input type="password" id="reg-password" autocomplete="new-password" minlength="8" maxlength="72" required placeholder="Tối thiểu 8 ký tự">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Tạo Tài Khoản</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL MƯỢN SÁCH -->
+  <div id="modal-borrow" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-borrow-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modal-borrow-title">Đăng Ký Mượn Sách</h3>
+        <button class="close-btn" type="button" aria-label="Đóng" onclick="closeModal('modal-borrow')">&times;</button>
+      </div>
+      <form id="form-borrow" onsubmit="submitBorrowBook(event)">
+        <input type="hidden" id="borrow-book-id">
+        <p>Tên sách: <strong id="borrow-book-title"></strong></p>
+        <p>Vị trí kệ: <span id="borrow-shelf"></span></p>
+        <div class="form-group" style="margin-top: 15px;">
+          <label>Ngày hẹn trả dự kiến: *</label>
+          <input type="date" id="borrow-due-date" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Xác Nhận Mượn Sách</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL NỘI DUNG SÁCH -->
+  <div id="modal-book-details" class="modal" role="dialog" aria-modal="true" aria-labelledby="book-details-title">
+    <div class="modal-dialog modal-lg book-details-dialog">
+      <div class="modal-header">
+        <h3 id="book-details-title"></h3>
+        <button class="close-btn" type="button" aria-label="Đóng" onclick="closeModal('modal-book-details')">&times;</button>
+      </div>
+      <div class="book-details-content">
+        <img id="book-details-cover" class="book-details-cover" alt="">
+        <div class="book-details-copy">
+          <p class="book-details-category" id="book-details-category"></p>
+          <p class="book-details-author"><i class="fa-solid fa-pen-nib" aria-hidden="true"></i> <span id="book-details-author"></span></p>
+          <h4>Nội dung chính</h4>
+          <p class="book-details-description" id="book-details-description"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL THÊM/SỬA SÁCH (ADMIN) -->
+  <div id="modal-book" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-book-title">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <h3 id="modal-book-title">Thêm Sách Mới</h3>
+        <button class="close-btn" type="button" aria-label="Đóng" onclick="closeModal('modal-book')">&times;</button>
+      </div>
+      <form id="form-book" onsubmit="handleSaveBook(event)">
+        <input type="hidden" id="book-edit-mode" value="ADD">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Mã ID Sách (Duy nhất): *</label>
+            <input type="text" id="b-id" required placeholder="BK-101">
+          </div>
+          <div class="form-group">
+            <label>Tên Sách: *</label>
+            <input type="text" id="b-title" required placeholder="Tên sách...">
+          </div>
+          <div class="form-group">
+            <label>Tác Giả: *</label>
+            <input type="text" id="b-author" required placeholder="Tác giả...">
+          </div>
+          <div class="form-group">
+            <label>Thể Loại: *</label>
+            <select id="b-category" required>
+              <option value="Sách báo">Sách báo</option>
+              <option value="Sách ngôn tình">Sách ngôn tình</option>
+              <option value="Sách trinh thám">Sách trinh thám</option>
+              <option value="Sách từ điển">Sách từ điển</option>
+              <option value="Sách văn học">Sách văn học</option>
+              <option value="Sách giáo khoa">Sách giáo khoa</option>
+              <option value="Sách kỹ năng">Sách kỹ năng</option>
+              <option value="Các thể loại khác">Các thể loại khác</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Nhà Xuất Bản:</label>
+            <input type="text" id="b-publisher">
+          </div>
+          <div class="form-group">
+            <label>Năm XB:</label>
+            <input type="number" id="b-year" value="2024">
+          </div>
+          <div class="form-group">
+            <label>Vị Trí Kệ Sách: *</label>
+            <input type="text" id="b-shelf" placeholder="Kệ B3-01" required>
+          </div>
+          <div class="form-group">
+            <label>Tổng Số Lượng: *</label>
+            <input type="number" id="b-total" min="1" required>
+          </div>
+          <div class="form-group">
+            <label>Số Lượng Còn:</label>
+            <input type="number" id="b-available" min="0">
+          </div>
+          <div class="form-group full-width">
+            <label>Đường Dẫn Ảnh Bìa (URL):</label>
+            <input type="url" id="b-image" placeholder="https://example.com/cover.jpg">
+          </div>
+          <div class="form-group full-width">
+            <label>Mô Tả Nội Dung:</label>
+            <textarea id="b-desc" rows="3"></textarea>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top: 15px;">Lưu Dữ Liệu</button>
+      </form>
+    </div>
+  </div>
+
+  <footer class="main-footer">
+    <div class="footer-container">
+      <address id="contact">
+        <strong>Văn Sơn Library</strong> - Hệ thống tri thức trực tuyến<br>
+        Email: <a href="mailto:sontran277353@gmail.com">sontran277353@gmail.com</a> | Hotline: <a href="tel:0337675479">0337675479</a>
+      </address>
+      <p>&copy; 2026 Văn Sơn Library. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

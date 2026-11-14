@@ -1,0 +1,7 @@
+{
+  "name": "van-son-library-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix ./van-son-library run dev"
+  }
+}
