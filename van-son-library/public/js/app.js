@@ -18,6 +18,30 @@ function escapeHtml(value = '') {
   })[character]);
 }
 
+function formatVnd(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `${new Intl.NumberFormat('vi-VN').format(amount)} VND` : 'Chưa xác định';
+}
+
+function getRentalDays(startDate, endDate) {
+  if (!startDate || !endDate) return null;
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  return Math.max(1, Math.floor((end - start) / 86400000));
+}
+
+function getRentalSummary(record) {
+  const dailyPrice = Number(record.rental_price_per_day);
+  const isActual = record.rental_fee !== null && record.rental_fee !== undefined;
+  const days = isActual
+    ? Number(record.actual_rental_days)
+    : getRentalDays(record.borrow_date, record.due_date);
+  const fee = isActual ? Number(record.rental_fee) : dailyPrice * days;
+  if (!Number.isInteger(dailyPrice) || !Number.isInteger(days) || !Number.isFinite(fee)) return null;
+  return { dailyPrice, days, fee, isActual };
+}
+
 function safeImageUrl(value) {
   try {
     const url = new URL(value);
@@ -146,16 +170,26 @@ let currentUser = readStoredUser();
 let currentToken = localStorage.getItem('vanson_token') || null;
 let activeCategory = 'Tất cả';
 const booksById = new Map();
+let adminReturnNotificationTimer = null;
+let adminReturnToastTimer = null;
+let latestObservedReturnRequestId = null;
+let checkingAdminReturnNotifications = false;
 
 // =================== TIỆN ÍCH CHUYỂN TAB & KHỞI CHẠY ===================
 document.addEventListener('DOMContentLoaded', () => {
   renderAuthUI();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && currentUser?.role === 'Admin') {
+      refreshAdminReturnNotifications().catch((error) => console.error('Không thể tải thông báo trả sách:', error));
+    }
+  });
   document.getElementById('search-input').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       handleSearch();
     }
   });
+  document.getElementById('borrow-due-date').addEventListener('change', updateBorrowEstimate);
   document.getElementById('books-grid').addEventListener('click', (event) => {
     const coverButton = event.target.closest('[data-book-details-id]');
     if (coverButton) {
@@ -168,11 +202,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const borrowButton = event.target.closest('[data-book-id]');
     if (!borrowButton) return;
     const book = booksById.get(borrowButton.dataset.bookId);
-    if (book) openBorrowModal(book.id, book.title, book.shelf_location || 'Đang cập nhật');
+    if (book) openBorrowModal(book.id, book.title, book.shelf_location || 'Đang cập nhật', book.rental_price_per_day);
+  });
+  document.getElementById('my-loans-table').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-request-return]');
+    if (button) requestBookReturn(button.dataset.requestReturn);
   });
   document.getElementById('admin-books-table').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-delete-book]');
-    if (button) deleteBook(button.dataset.deleteBook);
+    const editButton = event.target.closest('[data-edit-book]');
+    if (editButton) {
+      openEditBookModal(editButton.dataset.editBook);
+      return;
+    }
+    const deleteButton = event.target.closest('[data-delete-book]');
+    if (deleteButton) deleteBook(deleteButton.dataset.deleteBook);
+  });
+  document.getElementById('admin-loans-table').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-view-borrower]');
+    if (!button) return;
+    showBorrowerInfo(button.dataset.borrowerName, button.dataset.borrowerEmail, button.dataset.borrowerPhone);
   });
   document.querySelectorAll('.modal').forEach((modal) => {
     modal.addEventListener('click', (event) => {
@@ -210,6 +258,11 @@ function renderAuthUI() {
   if (currentUser) {
     navLoans.style.display = 'inline-block';
     navAdmin.style.display = currentUser.role === 'Admin' ? 'inline-block' : 'none';
+    if (currentUser.role === 'Admin') {
+      startAdminReturnNotifications();
+    } else {
+      stopAdminReturnNotifications();
+    }
 
     container.innerHTML = `
       <span style="font-size: 0.9rem; color: #fefae0;"><i class="fa-solid fa-circle-user"></i> ${escapeHtml(currentUser.name)} (${escapeHtml(currentUser.role)})</span>
@@ -218,11 +271,97 @@ function renderAuthUI() {
   } else {
     navLoans.style.display = 'none';
     navAdmin.style.display = 'none';
+    stopAdminReturnNotifications();
     container.innerHTML = `
       <button class="btn btn-outline" onclick="openModal('modal-login')">Đăng nhập</button>
       <button class="btn btn-gold" onclick="openModal('modal-register')">Đăng ký</button>
     `;
   }
+}
+
+function startAdminReturnNotifications() {
+  if (adminReturnNotificationTimer) return;
+  latestObservedReturnRequestId = null;
+  refreshAdminReturnNotifications().catch((error) => console.error('Không thể tải thông báo trả sách:', error));
+  adminReturnNotificationTimer = setInterval(() => {
+    refreshAdminReturnNotifications().catch((error) => console.error('Không thể tải thông báo trả sách:', error));
+  }, 30000);
+}
+
+function stopAdminReturnNotifications() {
+  if (adminReturnNotificationTimer) {
+    clearInterval(adminReturnNotificationTimer);
+    adminReturnNotificationTimer = null;
+  }
+  latestObservedReturnRequestId = null;
+  document.getElementById('admin-return-badge').hidden = true;
+  document.getElementById('admin-return-notice').hidden = true;
+  dismissAdminReturnToast();
+}
+
+async function refreshAdminReturnNotifications() {
+  if (checkingAdminReturnNotifications || !currentToken || currentUser?.role !== 'Admin') return;
+  checkingAdminReturnNotifications = true;
+  try {
+    const res = await fetch(apiUrl('/api/admin/return-requests'), {
+      headers: { 'Authorization': `Bearer ${currentToken}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Không thể tải thông báo trả sách.');
+    if (currentUser?.role !== 'Admin') return;
+
+    const count = Math.max(0, Number(data.count) || 0);
+    const latestRequest = data.latestRequest;
+    const latestId = latestRequest ? Number(latestRequest.id) : null;
+    const badge = document.getElementById('admin-return-badge');
+    const notice = document.getElementById('admin-return-notice');
+
+    badge.hidden = count === 0;
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.setAttribute('aria-label', `${count} yêu cầu trả sách đang chờ`);
+    notice.hidden = count === 0;
+    document.getElementById('admin-return-count').textContent =
+      `${count} yêu cầu trả sách đang chờ xác nhận`;
+    document.getElementById('admin-return-latest').textContent = latestRequest
+      ? `Mới nhất: phiếu #${latestId} — ${latestRequest.user_name} — ${latestRequest.book_title}`
+      : '';
+
+    const hasNewRequest = latestId !== null
+      && latestObservedReturnRequestId !== null
+      && latestId > latestObservedReturnRequestId;
+    if (hasNewRequest) {
+      showAdminReturnToast(latestRequest);
+      if (document.getElementById('view-admin').style.display !== 'none') {
+        await loadAdminDashboard();
+      }
+    }
+    if (latestId !== null) latestObservedReturnRequestId = latestId;
+    else if (latestObservedReturnRequestId === null) latestObservedReturnRequestId = 0;
+  } finally {
+    checkingAdminReturnNotifications = false;
+  }
+}
+
+function showAdminReturnToast(request) {
+  const toast = document.getElementById('admin-return-toast');
+  document.getElementById('admin-return-toast-message').textContent =
+    `Khách gửi yêu cầu trả sách: ${request.user_name} — ${request.book_title} (phiếu #${Number(request.id)}).`;
+  toast.hidden = false;
+  if (adminReturnToastTimer) clearTimeout(adminReturnToastTimer);
+  adminReturnToastTimer = setTimeout(dismissAdminReturnToast, 10000);
+}
+
+function dismissAdminReturnToast() {
+  const toast = document.getElementById('admin-return-toast');
+  if (toast) toast.hidden = true;
+  if (adminReturnToastTimer) {
+    clearTimeout(adminReturnToastTimer);
+    adminReturnToastTimer = null;
+  }
+}
+
+function scrollToAdminReturnRequests() {
+  document.getElementById('admin-loans-table').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function handleLogout() {
@@ -301,6 +440,7 @@ function renderBooksGrid(books) {
         <h3 class="book-card-title">${escapeHtml(b.title)}</h3>
         <p class="book-card-author"><i class="fa-solid fa-pen-nib"></i> ${escapeHtml(b.author)}</p>
         <p class="book-location"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(b.shelf_location || 'Đang cập nhật')}</p>
+        <p class="book-rental-price"><i class="fa-solid fa-coins" aria-hidden="true"></i> ${formatVnd(b.rental_price_per_day)} / ngày</p>
         <span class="book-status ${statusClass}">${statusText}</span>
         <div class="book-card-footer">
           <button class="btn btn-primary btn-block" data-book-id="${escapeHtml(b.id)}" ${b.available_quantity === 0 ? 'disabled' : ''}>
@@ -341,12 +481,13 @@ function openBookDetails(book, imageSource) {
   document.getElementById('book-details-title').textContent = book.title || 'Sách chưa đặt tên';
   document.getElementById('book-details-author').textContent = book.author || 'Đang cập nhật';
   document.getElementById('book-details-category').textContent = book.category || 'Đang cập nhật';
+  document.getElementById('book-details-daily-price').textContent = formatVnd(book.rental_price_per_day);
   document.getElementById('book-details-description').textContent =
     book.description || 'Chưa có nội dung giới thiệu cho cuốn sách này.';
   openModal('modal-book-details');
 }
 
-function openBorrowModal(id, title, shelf) {
+function openBorrowModal(id, title, shelf, dailyPrice) {
   if (!currentUser) {
     alert('Vui lòng đăng nhập trước khi đăng ký mượn sách!');
     openModal('modal-login');
@@ -355,25 +496,49 @@ function openBorrowModal(id, title, shelf) {
   document.getElementById('borrow-book-id').value = id;
   document.getElementById('borrow-book-title').textContent = title;
   document.getElementById('borrow-shelf').textContent = shelf;
+  currentBorrowDailyRate = Number(dailyPrice);
+  document.getElementById('borrow-book-daily-price').textContent = formatVnd(currentBorrowDailyRate);
+  document.getElementById('borrower-name').value = currentUser.name || '';
+  document.getElementById('borrower-email').value = currentUser.email || '';
+  document.getElementById('borrower-phone').value = currentUser.phone || '';
 
   // Đặt mặc định hạn trả là 14 ngày tới
   const next2Weeks = new Date();
   next2Weeks.setDate(next2Weeks.getDate() + 14);
-  const localDate = (date) => {
-    const offset = date.getTimezoneOffset();
-    return new Date(date.getTime() - offset * 60 * 1000).toISOString().split('T')[0];
-  };
   const dueDateInput = document.getElementById('borrow-due-date');
-  dueDateInput.min = localDate(new Date());
-  dueDateInput.value = localDate(next2Weeks);
+  dueDateInput.min = getLocalDateString(new Date());
+  dueDateInput.value = getLocalDateString(next2Weeks);
+  updateBorrowEstimate();
 
   openModal('modal-borrow');
+}
+
+let currentBorrowDailyRate = 15000;
+
+function getLocalDateString(date) {
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60000).toISOString().split('T')[0];
+}
+
+function updateBorrowEstimate() {
+  const dueDate = document.getElementById('borrow-due-date').value;
+  const days = getRentalDays(getLocalDateString(new Date()), dueDate);
+  const estimate = document.getElementById('borrow-estimate');
+  if (!days || !Number.isInteger(currentBorrowDailyRate)) {
+    estimate.textContent = 'Chọn ngày hẹn trả để xem phí dự kiến.';
+    return;
+  }
+  estimate.textContent =
+    `Dự kiến: ${days} ngày × ${formatVnd(currentBorrowDailyRate)} = ${formatVnd(days * currentBorrowDailyRate)}. Trả sớm sẽ được tính lại theo số ngày thực tế.`;
 }
 
 async function submitBorrowBook(e) {
   e.preventDefault();
   const bookId = document.getElementById('borrow-book-id').value;
   const dueDate = document.getElementById('borrow-due-date').value;
+  const borrowerName = document.getElementById('borrower-name').value.trim();
+  const borrowerEmail = document.getElementById('borrower-email').value.trim();
+  const borrowerPhone = document.getElementById('borrower-phone').value.trim();
 
   try {
     const res = await fetch(apiUrl('/api/borrow'), {
@@ -382,7 +547,7 @@ async function submitBorrowBook(e) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${currentToken}`
       },
-      body: JSON.stringify({ bookId, dueDate })
+      body: JSON.stringify({ bookId, dueDate, borrowerName, borrowerEmail, borrowerPhone })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Không thể đăng ký mượn sách.');
@@ -404,24 +569,52 @@ async function fetchMyLoans() {
     if (!res.ok || !Array.isArray(data)) throw new Error(data.message || 'Không thể tải lịch sử mượn.');
     tbody.innerHTML = data.map(r => {
       const isReturned = r.status === 'RETURNED';
+      const isReturnRequested = r.status === 'RETURN_REQUESTED';
+      const rental = getRentalSummary(r);
       return `
       <tr>
         <td>#${Number(r.id)}</td>
         <td><strong>${escapeHtml(r.book_id)}</strong></td>
         <td>${escapeHtml(r.title)}</td>
+        <td>${rental ? `${formatVnd(rental.dailyPrice)} / ngày` : 'Chưa xác định'}</td>
+        <td>${rental ? `${rental.days} ${rental.isActual ? '(thực tế)' : '(dự kiến)'}` : 'Chưa xác định'}</td>
+        <td>${rental ? `${rental.isActual ? '' : 'Dự kiến: '}${formatVnd(rental.fee)}` : 'Chưa xác định'}</td>
         <td>${escapeHtml(r.borrow_date)}</td>
         <td>${escapeHtml(r.due_date)}</td>
         <td>${r.return_date ? escapeHtml(r.return_date) : '<span class="text-danger">Chưa trả</span>'}</td>
         <td>
           <span class="book-status ${isReturned ? 'status-available' : 'status-partial'}">
-            ${isReturned ? 'Đã hoàn tất trả' : 'Đang mượn'}
+            ${isReturned ? 'Đã hoàn tất trả' : isReturnRequested ? 'Chờ xác nhận trả' : 'Đang mượn'}
           </span>
+        </td>
+        <td>
+          ${r.status === 'BORROWED'
+            ? `<button class="btn btn-primary" type="button" data-request-return="${Number(r.id)}">Yêu cầu trả sách</button>`
+            : isReturnRequested
+              ? '<span>Đã gửi yêu cầu</span>'
+              : '<span>Hoàn tất</span>'}
         </td>
       </tr>
       `;
     }).join('');
   } catch (error) {
-    tbody.innerHTML = `<tr><td colspan="7">${escapeHtml(error.message || 'Không thể tải dữ liệu.')}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11">${escapeHtml(error.message || 'Không thể tải dữ liệu.')}</td></tr>`;
+  }
+}
+
+async function requestBookReturn(recordId) {
+  if (!confirm(`Gửi yêu cầu trả sách cho phiếu #${recordId}? Thư viện sẽ xác nhận khi nhận được sách.`)) return;
+  try {
+    const res = await fetch(apiUrl(`/api/my-loans/${encodeURIComponent(recordId)}/return-request`), {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${currentToken}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Không thể gửi yêu cầu trả sách.');
+    alert(data.message);
+    await fetchMyLoans();
+  } catch (error) {
+    alert(error.message || 'Không thể kết nối máy chủ.');
   }
 }
 
@@ -453,6 +646,7 @@ async function loadAdminDashboard() {
         <td>${escapeHtml(b.author)}</td>
         <td>${escapeHtml(b.category)}</td>
         <td>${escapeHtml(b.shelf_location || 'Chưa cập nhật')}</td>
+        <td>${formatVnd(b.rental_price_per_day)} / ngày</td>
         <td>${Number(b.total_quantity) || 0}</td>
         <td>${Number(b.available_quantity) || 0}</td>
         <td>
@@ -461,6 +655,7 @@ async function loadAdminDashboard() {
           </span>
         </td>
         <td>
+          <button class="btn btn-outline" style="padding:4px 8px;" data-edit-book="${escapeHtml(b.id)}" aria-label="Sửa ${escapeHtml(b.title)}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
           <button class="btn btn-danger" style="padding:4px 8px;" data-delete-book="${escapeHtml(b.id)}" aria-label="Xóa ${escapeHtml(b.title)}"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
         </td>
       </tr>
@@ -481,6 +676,7 @@ async function loadAdminDashboard() {
   const tbodyLoans = document.getElementById('admin-loans-table');
   tbodyLoans.innerHTML = '';
   loans.forEach(l => {
+    const rental = getRentalSummary(l);
     tbodyLoans.innerHTML += `
       <tr>
         <td>#${l.id}</td>
@@ -489,12 +685,22 @@ async function loadAdminDashboard() {
         <td>${escapeHtml(l.book_title)} (${escapeHtml(l.book_id)})</td>
         <td>${escapeHtml(l.borrow_date)}</td>
         <td>${escapeHtml(l.due_date)}</td>
+        <td>${rental ? `${formatVnd(rental.dailyPrice)} / ngày` : 'Chưa xác định'}</td>
+        <td>${rental ? `${rental.days} ${rental.isActual ? '(thực tế)' : '(dự kiến)'}` : 'Chưa xác định'}</td>
+        <td>${rental ? `${rental.isActual ? '' : 'Dự kiến: '}${formatVnd(rental.fee)}` : 'Chưa xác định'}</td>
         <td>
           <span class="book-status ${l.status === 'RETURNED' ? 'status-available' : 'status-partial'}">
-            ${l.status === 'RETURNED' ? 'Đã trả' : 'Đang mượn'}
+            ${l.status === 'RETURNED' ? 'Đã trả' : l.status === 'RETURN_REQUESTED' ? 'Khách yêu cầu trả' : 'Đang mượn'}
           </span>
         </td>
         <td>
+          <button class="btn btn-outline" style="padding:4px 8px;" type="button"
+            data-view-borrower
+            data-borrower-name="${escapeHtml(l.user_name)}"
+            data-borrower-email="${escapeHtml(l.user_email)}"
+            data-borrower-phone="${escapeHtml(l.user_phone)}">
+            <i class="fa-solid fa-user" aria-hidden="true"></i> Xem thông tin
+          </button>
           ${l.status !== 'RETURNED'
             ? `<button class="btn btn-primary" style="padding:4px 8px;" onclick="confirmReturn(${l.id})"><i class="fa-solid fa-check"></i> Xác nhận trả</button>`
             : '<span style="color:gray;">Hoàn tất</span>'}
@@ -502,6 +708,13 @@ async function loadAdminDashboard() {
       </tr>
     `;
   });
+}
+
+function showBorrowerInfo(name, email, phone) {
+  document.getElementById('borrower-info-name').textContent = name || 'Chưa có thông tin';
+  document.getElementById('borrower-info-email').textContent = email || 'Chưa có thông tin';
+  document.getElementById('borrower-info-phone').textContent = phone || 'Chưa có thông tin';
+  openModal('modal-borrower-info');
 }
 
 async function confirmReturn(recordId) {
@@ -519,6 +732,7 @@ async function confirmReturn(recordId) {
     if (!res.ok) throw new Error(data.message || 'Không thể cập nhật phiếu mượn.');
     alert(data.message);
     await loadAdminDashboard();
+    await refreshAdminReturnNotifications();
   } catch (error) {
     alert(error.message || 'Không thể kết nối máy chủ.');
   }
@@ -526,12 +740,47 @@ async function confirmReturn(recordId) {
 
 function openAddBookModal() {
   document.getElementById('form-book').reset();
+  document.getElementById('book-edit-mode').value = 'ADD';
+  document.getElementById('modal-book-title').textContent = 'Thêm Sách Mới';
   document.getElementById('b-id').removeAttribute('readonly');
   openModal('modal-book');
 }
 
+async function openEditBookModal(id) {
+  try {
+    const res = await fetch(apiUrl('/api/books'));
+    const books = await res.json();
+    if (!res.ok || !Array.isArray(books)) {
+      throw new Error(books.message || 'Không thể tải thông tin sách cần sửa.');
+    }
+    const book = books.find((item) => String(item.id) === String(id));
+    if (!book) throw new Error('Không tìm thấy sách cần sửa.');
+
+    document.getElementById('form-book').reset();
+    document.getElementById('book-edit-mode').value = 'EDIT';
+    document.getElementById('modal-book-title').textContent = 'Cập Nhật Thông Tin Sách';
+    document.getElementById('b-id').value = book.id;
+    document.getElementById('b-id').setAttribute('readonly', 'readonly');
+    document.getElementById('b-title').value = book.title;
+    document.getElementById('b-author').value = book.author;
+    document.getElementById('b-category').value = book.category;
+    document.getElementById('b-publisher').value = book.publisher || '';
+    document.getElementById('b-year').value = book.publish_year || '';
+    document.getElementById('b-shelf').value = book.shelf_location || '';
+    document.getElementById('b-total').value = book.total_quantity;
+    document.getElementById('b-available').value = book.available_quantity;
+    document.getElementById('b-price').value = book.rental_price_per_day;
+    document.getElementById('b-image').value = book.image_url || '';
+    document.getElementById('b-desc').value = book.description || '';
+    openModal('modal-book');
+  } catch (error) {
+    alert(error.message || 'Không thể tải thông tin sách.');
+  }
+}
+
 async function handleSaveBook(e) {
   e.preventDefault();
+  const isEditing = document.getElementById('book-edit-mode').value === 'EDIT';
   const bookData = {
     id: document.getElementById('b-id').value.trim(),
     title: document.getElementById('b-title').value.trim(),
@@ -540,14 +789,19 @@ async function handleSaveBook(e) {
     publisher: document.getElementById('b-publisher').value.trim(),
     publish_year: parseInt(document.getElementById('b-year').value),
     shelf_location: document.getElementById('b-shelf').value.trim(),
+    rental_price_per_day: Number(document.getElementById('b-price').value),
+    available_quantity: Number(document.getElementById('b-available').value),
     description: document.getElementById('b-desc').value.trim(),
     image_url: document.getElementById('b-image').value.trim(),
     total_quantity: parseInt(document.getElementById('b-total').value)
   };
 
   try {
-    const res = await fetch(apiUrl('/api/admin/books'), {
-      method: 'POST',
+    const endpoint = isEditing
+      ? `/api/admin/books/${encodeURIComponent(bookData.id)}`
+      : '/api/admin/books';
+    const res = await fetch(apiUrl(endpoint), {
+      method: isEditing ? 'PUT' : 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${currentToken}`

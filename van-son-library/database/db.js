@@ -31,6 +31,8 @@ db.serialize(() => {
     shelf_location TEXT,
     description TEXT,
     image_url TEXT,
+    rental_price_per_day INTEGER NOT NULL DEFAULT 15000
+      CHECK (rental_price_per_day BETWEEN 15000 AND 30000),
     total_quantity INTEGER NOT NULL,
     available_quantity INTEGER NOT NULL
   )`);
@@ -40,6 +42,12 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     book_id TEXT NOT NULL,
+    borrower_name TEXT,
+    borrower_email TEXT,
+    borrower_phone TEXT,
+    rental_price_per_day INTEGER NOT NULL DEFAULT 15000,
+    actual_rental_days INTEGER,
+    rental_fee INTEGER,
     borrow_date DATE DEFAULT (DATE('now')),
     due_date DATE NOT NULL,
     return_date DATE,

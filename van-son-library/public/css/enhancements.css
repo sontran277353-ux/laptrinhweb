@@ -709,3 +709,114 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+
+.notification-badge {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #fff;
+  background: #c62828;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.notification-badge[hidden],
+.admin-return-notice[hidden],
+.admin-return-toast[hidden] {
+  display: none;
+}
+
+.admin-return-notice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 22px;
+  padding: 15px 18px;
+  border: 1px solid #e8c46a;
+  border-left: 5px solid #c98214;
+  border-radius: 12px;
+  color: #553b0c;
+  background: #fff8df;
+}
+
+.admin-return-notice > i {
+  color: #a86708;
+  font-size: 1.3rem;
+}
+
+.admin-return-notice-copy {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+
+.admin-return-notice-copy span {
+  color: #705a30;
+  font-size: 0.9rem;
+}
+
+.admin-return-toast {
+  position: fixed;
+  z-index: 1000;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  max-width: min(440px, calc(100vw - 32px));
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  color: #fff;
+  background: #1b4332;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.admin-return-toast > i {
+  color: #f4c95d;
+}
+
+.admin-return-toast button {
+  flex: 0 0 auto;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+@media (max-width: 600px) {
+  .admin-return-notice {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .admin-return-notice .btn {
+    margin-left: 34px;
+  }
+
+  .admin-return-toast {
+    right: 16px;
+    bottom: 16px;
+  }
+}
+
+.book-rental-price,
+.book-details-price {
+  color: #9a5d00;
+  font-weight: 750;
+}
+
+.rental-estimate {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #1b4332;
+  background: #edf5ef;
+  font-weight: 650;
+}
